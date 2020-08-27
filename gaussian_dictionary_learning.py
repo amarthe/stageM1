@@ -3,9 +3,11 @@ import matplotlib.pyplot as plt
 import time
 
 from sklearn.linear_model import LinearRegression
+from sklearn.decomposition import PCA
 from scipy.sparse import lil_matrix
 
-from utils import Gaussians, MatrixUtils
+from utils import Gaussians, MatrixUtils, MetricsUtils
+from initialization import Initialisation
 
 
 class DictionaryLearningAlgorithm:
@@ -25,7 +27,7 @@ class DictionaryLearningAlgorithm:
                   of phase k, for pixel (i, j) is at a_matr[k, i*w+j] with w the width of the image
     """
 
-    def __init__(self, num_phases, mu_lapl=0., mu_abs=0., mu_fro=0., g_matr=None, debug=True):
+    def __init__(self, num_phases, mu_lapl=0., mu_abs=0., mu_fro=0., mu_spars=0., g_matr=None, debug=True):
         """
         Create an instance of the dictionary learning algorithm
         :param num_phases: Number of phases to estimate
@@ -43,10 +45,11 @@ class DictionaryLearningAlgorithm:
         self.mu_lapl = mu_lapl
         self.mu_abs = mu_abs
         self.mu_fro = mu_fro
+        self.mu_spars = mu_spars
         self.debug = debug
 
-        self.initialize_matrix = None
-        self.first_column_fro = None
+        self.initialize_methode = None
+        self.matrix_regularized = None
 
         # If no G matrix is provided, load the default one from Data/xrays.json
         if g_matr is None:
@@ -79,6 +82,9 @@ class DictionaryLearningAlgorithm:
 
         # 'smoothness' of the absolute value used in the absolute value smoothness regularization
         self.abs_smoothness = 1e-8
+        
+        # 'smoothness' of the logarithm use in the sparsity regularization
+        self.log_smoothness = 1.
 
         # to keep track of the number of iterations when fit is called multiple times
         self.num_iterations = None
@@ -89,14 +95,16 @@ class DictionaryLearningAlgorithm:
         # for debugging purposes
         self.eta_as = []
         self.eta_ps = []
-        self.base_losses = []
 
         # to observe the convergence of the algorithm
         self.losses = []
+        self.base_losses = []
         self.p_update = []
         self.a_update = []
         self.a_norm = []
         self.p_norm = []
+        self.step_size_a = []
+        self.step_size_p = []
 
         # to keep the time of execution
         self.algo_time = 0.
@@ -119,7 +127,7 @@ class DictionaryLearningAlgorithm:
     def _eval_function(self, a_matr=None, p_matr=None):
         """
         Evaluate the loss function that is being optimized:
-        L(A, P) = .5 * ||X - GPA||^2 + .5 * mu_lapl * `sum of (diff in pixels)^2` + mu_abs * `sum of abs(diff in pixels) + .5 * mu_fro * (frobenius norme of GP[np.diag(0,1...1)])^2`
+        L(A, P) = .5 * ||X - GPA||^2 + .5 * mu_lapl * `sum of (diff in pixels)^2` + mu_abs * `sum of abs(diff in pixels) + .5 * mu_fro * (||GP[1:]||_2)^2 + .5 * mu_spars * `sum of (logs in A[1:])`
         :param a_matr: (optional) if you use this argument, the activations matrix
         stored in the class attributes is overriden
         :param p_matr: (optional) if you use this argument, the peaks matrix
@@ -155,15 +163,24 @@ class DictionaryLearningAlgorithm:
         # for efficiency reasons: we don't need to calculate the matrix prod if mu_fro = 0
         if self.mu_fro != 0.:
             #calc the Frobenius smoothness loss : .5 * mu_fro * ||GP||_2
-            if self.first_column_fro:
+            if self.matrix_regularized:
                 fro_loss = .5 * self.mu_fro * np.linalg.norm(np.delete(d_matr,0,1), 'fro')
             else:
                 fro_loss = .5 * self.mu_fro * np.linalg.norm(d_matr, 'fro')
         else:
             fro_loss = 0.
+            
+        #
+        if self.mu_spars != 0.:
+            if self.matrix_regularized:
+                spars_loss = self.mu_spars * self._smoothed_log(np.delete(a_matr,0,0)).sum()
+            else:
+                spars_loss = self.mu_spars * self._smoothed_log(a_matr).sum()
+        else:
+            spars_loss = 0.
 
         # add the three parts of the loss together
-        return self._base_loss(a_matr, d_matr) + spatial_loss_abs + spatial_loss_lapl + fro_loss
+        return self._base_loss(a_matr, d_matr) + spatial_loss_abs + spatial_loss_lapl + fro_loss + spars_loss
 
     def _base_loss(self, a_matr=None, d_matr=None):
         """
@@ -178,7 +195,7 @@ class DictionaryLearningAlgorithm:
             a_matr = self.a_matr
         if d_matr is None:
             d_matr = self.d_matr
-
+            
         # calculate the base part of the loss
         # because tr_x_x = trace(XX^T) has to be calculated only once,
         # this computation is split in multiple parts for efficiency reasons:
@@ -255,7 +272,23 @@ class DictionaryLearningAlgorithm:
         :return: derivative of the smoothed absolute value function, evaluated in x
         """
         return x / np.sqrt(x**2 + self.abs_smoothness)
-
+    
+    def _smoothed_log(self, x):
+        """
+        The 'smoothed' log function log(x + eps) in which epsilon is chosen arbitarly. The point is for the function to be differentiable in 0
+        :param x: input data
+        :return: 'smoothed' log of input data
+        """
+        return np.log(x + self.log_smoothness)
+    
+    def _deriv_smoothed_log(self, x):
+        """
+        Derivative of the 'smoothed' absolute value function log(x + eps)
+        :param x: input data
+        :return: derivative of the 'smoothed' log function, evaluated in x
+        """
+        return 1/(x+ self.log_smoothness)
+    
     def _project_on_simplex(self, data):
         """
         Project the input data on the convex set in which the value
@@ -283,7 +316,8 @@ class DictionaryLearningAlgorithm:
 
     def _gradient_a(self):
         """
-        Calculate the gradient of the loss function with respect to a
+        Calculate the gradient of the loss function
+        with respect to a
         :return: gradient
         """
         # no need to to the expensive calculations if mu_lapl is 0
@@ -298,10 +332,17 @@ class DictionaryLearningAlgorithm:
             abs_part = self.mu_abs * self._calc_grad_spatial_abs_penalty()
         else:
             abs_part = 0.
+            
+        if self.mu_spars != 0.:
+            spars_part = self.mu_spars * self._deriv_smoothed_log(self.a_matr)
+            if self.matrix_regularized:
+                spars_part[0,:] = 0.
+        else:
+            spars_part = 0.
 
         # gradient of the base part = -P^TG^T(X + GPA)
         return - self.d_matr.T @ self.x_matr + np.linalg.multi_dot((self.d_matr.T, self.d_matr, self.a_matr)) \
-            + lapl_part + abs_part
+            + lapl_part + abs_part + spars_part
 
     def _gradient_p(self):
         """
@@ -311,7 +352,7 @@ class DictionaryLearningAlgorithm:
         # no need to to the expensive calculations if mu_fro is 0
         if self.mu_fro != 0.:
             # Gradient of the Frobenius part : (G^T)GP
-            if self.first_column_fro:
+            if self.matrix_regularized:
                 fro_part = self.mu_fro * (self.g_matr.T @ self.d_matr)
                 fro_part[:,0] = 0.
             else:
@@ -378,6 +419,7 @@ class DictionaryLearningAlgorithm:
         # will cause the algorithm to take very, very small steps and thus not converge
         if self.debug:
             self.eta_as.append(self.eta_a)
+            self.step_size_a.append(np.linalg.norm(grad_a))
 
     def _make_step_p(self):
         """
@@ -410,6 +452,7 @@ class DictionaryLearningAlgorithm:
         # will cause the algorithm to take very, very small steps and thus not converge
         if self.debug:
             self.eta_ps.append(self.eta_p)
+            self.step_size_p.append(np.linalg.norm(grad_p))
 
     def _initialize(self, x_matr):   #TODO Modify description
         """
@@ -425,11 +468,13 @@ class DictionaryLearningAlgorithm:
         """
         # store the original shape of the input data X
         self.x_shape = x_matr.shape
+        #TODO REMOVE 
+        temp = x_matr 
         # flatten X to a Kx(NM) matrix, such that the columns hold the raw spectra
         x_matr = x_matr.reshape((self.x_shape[0] * self.x_shape[1], self.x_shape[2])).T  # flatten X
         self.x_matr = x_matr.astype(np.float)
         
-        if self.initialize_matrix:
+        if self.initialize_methode == "average":
             # Initialize randomly the activation matrix but with the first column to ones
             self.a_matr = self._project_on_simplex(np.random.rand(self.p_, self.x_matr.shape[1]))
             self.a_matr[0] = np.ones(self.a_matr.shape[1])
@@ -442,6 +487,41 @@ class DictionaryLearningAlgorithm:
             avg_spectra = x_matr.mean(axis=1)
             linear_reg = LinearRegression().fit(self.g_matr,avg_spectra)
             self.p_matr[:,0] = linear_reg.coef_.clip(min=0)
+
+        elif self.initialize_methode == "smart":
+            init = Initialisation(temp, self.p_)
+            init.fit()
+            self.a_matr = init.coefficients.T
+            self.p_matr = np.zeros((self.g_matr.shape[1], self.p_))
+            for i in range(self.p_):
+                linear_reg = LinearRegression().fit(self.g_matr, init.vertices[i])
+                self.p_matr[:,i] = linear_reg.coef_.clip(min=0)
+            
+            #Get the matrix spectra as the first vector of the matrix, for advanced regularisations
+            avg_spectra = x_matr.mean(axis=1)
+            index = np.argmin([MetricsUtils.spectral_angle(avg_spectra, init.vertices[i]) for i in range(self.p_)])
+            
+            #To avoid pointers copy issues
+            tmp1 = [self.p_matr[i,index] for i in range(len(self.p_matr))]
+            tmp2 = [self.p_matr[i,0]     for i in range(len(self.p_matr))]
+            self.p_matr[:,0], self.p_matr[:,index] = tmp1, tmp2
+            tmp1 = [self.a_matr[index,i] for i in range(len(self.a_matr[0]))]
+            tmp2 = [self.a_matr[0,i]     for i in range(len(self.a_matr[0]))]
+            self.a_matr[0], self.a_matr[index] = tmp1, tmp2
+            
+                
+        elif self.initialize_methode == "plan":
+            pca = PCA(n_components=self.p_ -1)
+            pca.fit(self.x_matr.T)
+            self.p_matr = np.random.rand(self.g_matr.shape[1], self.p_)
+            vectors = np.dot(self.g_matr, self.p_matr).T
+            projected_vectors = np.dot(vectors,np.dot(pca.components_.T,pca.components_))
+            projected_mean = np.dot(pca.mean_,np.dot(pca.components_.T,pca.components_))
+            planar_vectors = projected_vectors + pca.mean_ - projected_mean
+            for i in range(self.p_):
+                linear_reg = LinearRegression().fit(self.g_matr, planar_vectors[i])
+                self.p_matr[:,i] = linear_reg.coef_.clip(min=0)                
+            self.a_matr = self._project_on_simplex(np.random.rand(self.p_, self.x_matr.shape[1]))
 
         else:
             # initialize the activations matrix randomly
@@ -494,7 +574,7 @@ class DictionaryLearningAlgorithm:
 
         return eval_after_a, eval_after_p
 
-    def fit(self, x_matr, max_iter, tol_function, initialize=True, initialize_matrix=False, first_column_fro=False, step_a=True, step_p=True):
+    def fit(self, x_matr, max_iter, tol_function, initialize=True, initialize_methode="random", matrix_regularized=False, step_a=True, step_p=True):
         """
         Run the optimization algorithm to fit the input matrix, until either a maximum number
         of iterations is reached (max_iter) or the loss function has decreased by less than
@@ -512,8 +592,8 @@ class DictionaryLearningAlgorithm:
         """
 
         #set the parameters
-        self.initialize_matrix = initialize_matrix
-        self.first_column_fro = first_column_fro
+        self.initialize_methode = initialize_methode
+        self.matrix_regularized = matrix_regularized
 
         if initialize:
             self._initialize(x_matr)
@@ -566,10 +646,11 @@ class DictionaryLearningAlgorithm:
         fig1 = plt.figure(figsize=(15, 3))
 
         ax1 = fig1.add_subplot(1, 6, 1)
-        ax1.plot(self.losses)
+        ax1.plot(self.base_losses)
+        ax1.set_yscale('log')
         ax1.set_title('F(A,D)')
         ax2 = fig1.add_subplot(1, 6, 2)
-        ax2.plot(np.maximum(np.array(self.losses[:-2]) - self.losses[-1], 0.01))
+        ax2.plot(np.array(self.losses[:-2]) - self.losses[-1])
         ax2.set_yscale('log')
         ax2.set_title('F(A,D)_t - F(A,D)_T')
         ax3 = fig1.add_subplot(1, 6, 3)
@@ -579,12 +660,12 @@ class DictionaryLearningAlgorithm:
         ax4 = fig1.add_subplot(1, 6, 4)
         ax4.plot(self.p_update)
         ax4.set_yscale('log')
-        ax4.set_title('D update')
+        ax4.set_title('P update')
         ax6 = fig1.add_subplot(1, 6, 5)
         ax6.plot(self.a_norm)
         ax6.set_title('A_Norm')
         ax7 = fig1.add_subplot(1, 6, 6)
         ax7.plot(self.p_norm)
-        ax7.set_title('D_Norm')
+        ax7.set_title('P_Norm')
         fig1.tight_layout()
         plt.show()
