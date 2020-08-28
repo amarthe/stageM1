@@ -578,7 +578,7 @@ class DictionaryLearningAlgorithm:
 
         return eval_after_a, eval_after_p
 
-    def fit(self, x_matr, max_iter, tol_function, initialize=True, initialize_methode="random", matrix_regularized=False, step_a=True, step_p=True):
+    def fit(self, x_matr, max_iter, tol_function, initialize=True, initialize_method="random", matrix_regularized=False, step_a=True, step_p=True):
         """
         Run the optimization algorithm to fit the input matrix, until either a maximum number
         of iterations is reached (max_iter) or the loss function has decreased by less than
@@ -596,7 +596,7 @@ class DictionaryLearningAlgorithm:
         """
 
         #set the parameters
-        self.initialize_methode = initialize_methode
+        self.initialize_methode = initialize_method
         self.matrix_regularized = matrix_regularized
 
         if initialize:
