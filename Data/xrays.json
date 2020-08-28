@@ -1,0 +1,119 @@
+{
+    "table": [
+        {
+            "element": "Mg",
+            "energies": [1.254, 1.295],
+            "ratios": [1.0, 0.01]
+        },
+        {
+            "element": "Ca-K",
+            "energies": [3.691, 3.688, 4.015],
+            "ratios": [1.0, 0.5, 0.195]
+        },
+        {
+            "element": "Ca-L",
+            "energies": [0.341, 0.344, 0.303],
+            "ratios": [0.1, 0.123, 1.0]
+        },
+        {
+            "element": "Fe-K",
+            "energies": [6.403, 6.390, 7.06],
+            "ratios": [1.0, 0.5, 0.204]
+        },
+        {
+            "element": "Fe-L",
+            "energies": [0.708],
+            "ratios": [1.0]
+        },
+        {
+            "element": "Ga-K",
+            "energies": [9.252, 9.225, 10.266],
+            "ratios": [1.0, 0.5, 0.142]
+        },
+        {
+            "element": "Ga-L",
+            "energies": [1098.59],
+            "ratios": [1.0]
+        },
+        {
+            "element": "Al",
+            "energies": [1.486, 1.553],
+            "ratios": [1, 0.013]
+        },
+        {
+            "element": "Si",
+            "energies": [1.740, 1.828],
+            "ratios": [1, 0.04]
+        },
+        {
+            "element": "O",
+            "energies": [0.525],
+            "ratios": [1]
+        },
+        {
+            "element": "Hf-L",
+            "energies": [7.899, 7.845, 9.022, 9.349],
+            "ratios": [1.0, 0.1, 0.44, 0.19]
+        },
+        {
+            "element": "Hf-M",
+            "energies": [1.649],
+            "ratios": [1.0]
+        },
+        {
+            "element": "U-L",
+            "energies": [13.612, 13.436],
+            "ratios": [1.0, 0.1]
+        },
+        {
+            "element": "U-M",
+            "energies": [3.174],
+            "ratios": [1.0]
+        },
+        {
+            "element": "Nd-L",
+            "energies": [5.231, 5.208, 5.721, 6.091],
+            "ratios": [1.0, 0.1, 0.5, 0.2]
+        },
+        {
+            "element": "Nd-M",
+            "energies": [0.978],
+            "ratios": [1.0]
+        },
+        {
+            "element": "Sm-L",
+            "energies": [5.638, 5.609, 6.204, 6.587],
+            "ratios": [1.0, 0.1, 0.46, 0.17]
+        },
+        {
+            "element": "Sm-M",
+            "energies": [1.085],
+            "ratios": [1.0]
+        },
+        {
+            "element": "Lu-L",
+            "energies": [7.656, 7.605, 8.709, 9.050],
+            "ratios": [1.0, 0.1, 0.41, 0.17]
+        },
+        {
+            "element": "Lu-M",
+            "energies": [1.587],
+            "ratios": [1.0]
+        },
+        {
+            "element": "Cu-K",
+            "energies": [8.048, 8.028, 8.907],
+            "ratios": [1.0, 0.5, 0.203]
+        },
+        {
+            "element": "Cu-L",
+            "energies": [0.930],
+            "ratios": [1.0]
+        },
+        {
+            "element": "Zr",
+            "energies": [15.775, 15.69, 17.667],
+            "ratios": [1.0, 0.5, 0.166]
+        }
+    ]
+}

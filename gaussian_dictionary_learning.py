@@ -458,7 +458,7 @@ class DictionaryLearningAlgorithm:
             self.eta_ps.append(self.eta_p)
             self.step_size_p.append(np.linalg.norm(grad_p))
 
-    def _initialize(self, x_matr):   #TODO Modify description
+    def _initialize(self, x_matr):
         """
         Initialize all the mdata used in the algorithm:
         - Flatten and store the data matrix X in the class, also store the original shape
