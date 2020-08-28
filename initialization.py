@@ -1,4 +1,4 @@
-from random import randint  
+from random import randint
 from sklearn.decomposition import PCA
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
@@ -10,15 +10,25 @@ mp.dps=80
 
 class Initialisation:
     """
-    TODO 
+    This class represents the algorithm to smartly initialize the gaussian dictionnary learning
+    algorithm.
+    To use it, create an instance, pass the appropriate parameters, and fit it.
+
+    After fitting the input data, the results can be accessed thorugh the attributes
+    of the algorithm object you created:
+        - vertices: the spectra found
+        - coefficients: the activation matrix
     """
     
     def __init__(self, data, num_phases):
-        
+        """    
+        Create an instance of the algorithm
+        :param data: The array of pixels
+        :param num_phases: The number of phases to extract from the data
+        """
         #Data related variables
-        self.nb_pixel = data.shape[0] * data.shape[1]
-        self.picture_dim = data.shape[:2]
-        self.data = data.reshape(self.nb_pixel, data.shape[2])
+        self.nb_pixel = data.shape[0]
+        self.data = data
         self.num_phases = num_phases
     
         #Intermediate variables
@@ -36,6 +46,8 @@ class Initialisation:
         Finding the minimum point in the convex hull of a finite set of points.
         Based on the work of Philip Wolf and the recursive algorithm of Kazuyuki Sekitani and Yoshitsugu Yamamoto.
         https://scipy-cookbook.readthedocs.io/items/Finding_Convex_Hull_Minimum_Point.html
+        :param P: the vertices of the polytope to project on
+        :result: the projection of the origin on it
         """
 
         if len(P) == 1:
@@ -118,8 +130,7 @@ class Initialisation:
 
     def _compute_vertices(self):
         """
-        Compute the vertices of the polytope
-        :result: ''vertices'' of the convex hull of proj_rd
+        Compute the vertices of the convex hull of proj_rd
         """
 
         vector_indices = zeros(self.num_phases, dtype=int)
@@ -141,6 +152,12 @@ class Initialisation:
         self.base = base
 
     def fit(self):
+        """
+        Reduces the dimension
+        Compute the vertices
+        Project on the convex hull of the vertices
+        Compute the coefficient
+        """
         
         #Dimension reduction to filter noise
         pca = PCA(n_components=self.num_phases - 1)
@@ -170,6 +187,8 @@ class Initialisation:
 if __name__=="__main__":
 
     X = load("Data/data.npy")
+    picture_dim = X.shape[:2]
+    X = X.reshape(X.shape[0]*X.shape[1], X.shape[2])
     init = Initialisation(X, 3)
     init.fit()
 
@@ -193,8 +212,8 @@ if __name__=="__main__":
     
     fig2 = plt.figure(figsize=(5.5*init.num_phases,4.5))
     for i in range(init.num_phases):
-        plt.subplot(1,init.num_phases,i)
-        plt.imshow(init.coefficients.reshape(*init.picture_dim, init.num_phases)[:, :, i], cmap="viridis")
+        plt.subplot(1,init.num_phases,i+1)
+        plt.imshow(init.coefficients.reshape(*picture_dim, init.num_phases)[:, :, i], cmap="viridis")
         plt.grid(b=30)
         plt.title("Activations of first spectrum")
         plt.colorbar()

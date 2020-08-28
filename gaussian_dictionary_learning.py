@@ -35,6 +35,10 @@ class DictionaryLearningAlgorithm:
         should be used to control spatial smoothness
         :param mu_abs: Strength of absolute value smoothness regularization,
         should be used to control spatial smoothness
+        :param mu_fro: Strengh of the Ridge regularization
+        should be used to control the size of the polytope of spectra solutions
+        :param mu_spars: Strengh of the Sparsity regularization
+        should be used to control sparsity of activation matrix
         :param g_matr: (optional) Matrix with signals of which the learned spectra will be a linear combination of,
         if this is not specified the json at Data/xrays.json is used to compose these signals using the Gaussians
         class in utils.py, with the default arguments.
@@ -458,8 +462,7 @@ class DictionaryLearningAlgorithm:
         """
         Initialize all the mdata used in the algorithm:
         - Flatten and store the data matrix X in the class, also store the original shape
-        - Randomly initialize the activations matrix A
-        - Initialize the peaks matrix P to 0
+        - Initialize the P and A matrices
         - Create the laplacian matrix for A
         - Create the 'cached' variables: A L, trace(X^T X), G P
         - Set the number of iterations equal to 0
@@ -468,12 +471,11 @@ class DictionaryLearningAlgorithm:
         """
         # store the original shape of the input data X
         self.x_shape = x_matr.shape
-        #TODO REMOVE 
-        temp = x_matr 
         # flatten X to a Kx(NM) matrix, such that the columns hold the raw spectra
         x_matr = x_matr.reshape((self.x_shape[0] * self.x_shape[1], self.x_shape[2])).T  # flatten X
         self.x_matr = x_matr.astype(np.float)
         
+        #Set the matrix endmember spectra to the average spectra of the data, to force it being stored as index 0.
         if self.initialize_methode == "average":
             # Initialize randomly the activation matrix but with the first column to ones
             self.a_matr = self._project_on_simplex(np.random.rand(self.p_, self.x_matr.shape[1]))
@@ -487,9 +489,10 @@ class DictionaryLearningAlgorithm:
             avg_spectra = x_matr.mean(axis=1)
             linear_reg = LinearRegression().fit(self.g_matr,avg_spectra)
             self.p_matr[:,0] = linear_reg.coef_.clip(min=0)
-
+    
+        #'smart' initialization method, see initialization.py
         elif self.initialize_methode == "smart":
-            init = Initialisation(temp, self.p_)
+            init = Initialisation(x_matr, self.p_)
             init.fit()
             self.a_matr = init.coefficients.T
             self.p_matr = np.zeros((self.g_matr.shape[1], self.p_))
@@ -509,7 +512,7 @@ class DictionaryLearningAlgorithm:
             tmp2 = [self.a_matr[0,i]     for i in range(len(self.a_matr[0]))]
             self.a_matr[0], self.a_matr[index] = tmp1, tmp2
             
-                
+        #Initialize randomly but in the 'subspace' of data        
         elif self.initialize_methode == "plan":
             pca = PCA(n_components=self.p_ -1)
             pca.fit(self.x_matr.T)
@@ -522,7 +525,8 @@ class DictionaryLearningAlgorithm:
                 linear_reg = LinearRegression().fit(self.g_matr, planar_vectors[i])
                 self.p_matr[:,i] = linear_reg.coef_.clip(min=0)                
             self.a_matr = self._project_on_simplex(np.random.rand(self.p_, self.x_matr.shape[1]))
-
+        
+        #Initialize randomly
         else:
             # initialize the activations matrix randomly
             self.a_matr = self._project_on_simplex(np.random.rand(self.p_, self.x_matr.shape[1]))
